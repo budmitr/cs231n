@@ -26,16 +26,10 @@ def rnn_step_forward(x, prev_h, Wx, Wh, b):
   - next_h: Next hidden state, of shape (N, H)
   - cache: Tuple of values needed for the backward pass.
   """
-  next_h, cache = None, None
-  ##############################################################################
-  # TODO: Implement a single forward step for the vanilla RNN. Store the next  #
-  # hidden state and any values you need for the backward pass in the next_h   #
-  # and cache variables respectively.                                          #
-  ##############################################################################
-  pass
-  ##############################################################################
-  #                               END OF YOUR CODE                             #
-  ##############################################################################
+
+  next_h = np.tanh(x.dot(Wx) + prev_h.dot(Wh) + b)
+  cache = (x, prev_h.copy(), next_h, Wx, Wh)
+
   return next_h, cache
 
 
@@ -54,17 +48,17 @@ def rnn_step_backward(dnext_h, cache):
   - dWh: Gradients of hidden-to-hidden weights, of shape (H, H)
   - db: Gradients of bias vector, of shape (H,)
   """
-  dx, dprev_h, dWx, dWh, db = None, None, None, None, None
-  ##############################################################################
-  # TODO: Implement the backward pass for a single step of a vanilla RNN.      #
-  #                                                                            #
-  # HINT: For the tanh function, you can compute the local derivative in terms #
-  # of the output value from tanh.                                             #
-  ##############################################################################
-  pass
-  ##############################################################################
-  #                               END OF YOUR CODE                             #
-  ##############################################################################
+
+  x, prev_h, next_h, Wx, Wh = cache
+
+  dsum = dnext_h * (1 - next_h ** 2)  # NxH
+
+  dx = dsum.dot(Wx.T)         # NxH * HxD => NxD
+  dprev_h = dsum.dot(Wh.T)    # NxH * HxH => => NxH
+  dWx = x.T.dot(dsum)         # DxN * NxH => DxH
+  dWh = prev_h.T.dot(dsum)    # HxN * NxH => HxH
+  db = dsum.sum(axis=0)       # H
+
   return dx, dprev_h, dWx, dWh, db
 
 
@@ -86,16 +80,19 @@ def rnn_forward(x, h0, Wx, Wh, b):
   - h: Hidden states for the entire timeseries, of shape (N, T, H).
   - cache: Values needed in the backward pass
   """
-  h, cache = None, None
-  ##############################################################################
-  # TODO: Implement forward pass for a vanilla RNN running on a sequence of    #
-  # input data. You should use the rnn_step_forward function that you defined  #
-  # above.                                                                     #
-  ##############################################################################
-  pass
-  ##############################################################################
-  #                               END OF YOUR CODE                             #
-  ##############################################################################
+
+  N, T, D = x.shape
+  H = len(b)
+
+  h = np.zeros((N, T, H))
+  h[:, -1, :] = h0
+  cache = []
+
+  for t in xrange(T):
+    h[:, t, :], c = rnn_step_forward(x[:, t, :], h[:, t - 1, :], Wx, Wh, b)
+    cache.append(c)
+
+  cache.append((N, T, D, H)) # explicitly store shapes
   return h, cache
 
 
@@ -114,15 +111,30 @@ def rnn_backward(dh, cache):
   - db: Gradient of biases, of shape (H,)
   """
   dx, dh0, dWx, dWh, db = None, None, None, None, None
-  ##############################################################################
-  # TODO: Implement the backward pass for a vanilla RNN running an entire      #
-  # sequence of data. You should use the rnn_step_backward function that you   #
-  # defined above.                                                             #
-  ##############################################################################
-  pass
-  ##############################################################################
-  #                               END OF YOUR CODE                             #
-  ##############################################################################
+
+  N, T, D, H = cache.pop() # explicitly stored shapes for easy zero-init
+  dh = dh.copy()           # we'll accumulate dh while backprop
+                           # without copy this breaks gradient check
+  
+  dx = np.zeros((N, T, D))
+  dh0 = np.zeros((N, H))
+  dWx = np.zeros((D, H))
+  dWh = np.zeros((H, H))
+  db = np.zeros(H)
+
+  for t in reversed(range(T)):
+    c = cache.pop()
+    dxt, dht, dWxt, dWht, dbt = rnn_step_backward(dh[:, t, :], c)
+
+    dh[:, t - 1, :] += dht
+
+    db += dbt
+    dWx += dWxt
+    dWh += dWht
+    dx[:, t, :] = dxt
+
+  dh0 = dht # very last dht
+
   return dx, dh0, dWx, dWh, db
 
 
@@ -141,16 +153,10 @@ def word_embedding_forward(x, W):
   - out: Array of shape (N, T, D) giving word vectors for all input words.
   - cache: Values needed for the backward pass
   """
-  out, cache = None, None
-  ##############################################################################
-  # TODO: Implement the forward pass for word embeddings.                      #
-  #                                                                            #
-  # HINT: This should be very simple.                                          #
-  ##############################################################################
-  pass
-  ##############################################################################
-  #                               END OF YOUR CODE                             #
-  ##############################################################################
+
+  out = W[x]
+  cache = (x, W)
+
   return out, cache
 
 
@@ -169,16 +175,11 @@ def word_embedding_backward(dout, cache):
   Returns:
   - dW: Gradient of word embedding matrix, of shape (V, D).
   """
-  dW = None
-  ##############################################################################
-  # TODO: Implement the backward pass for word embeddings.                     #
-  #                                                                            #
-  # HINT: Look up the function np.add.at                                       #
-  ##############################################################################
-  pass
-  ##############################################################################
-  #                               END OF YOUR CODE                             #
-  ##############################################################################
+
+  x, W = cache
+  dW = np.zeros_like(W)
+  np.add.at(dW, x, dout)
+
   return dW
 
 
@@ -216,15 +217,20 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
   - next_c: Next cell state, of shape (N, H)
   - cache: Tuple of values needed for backward pass.
   """
-  next_h, next_c, cache = None, None, None
-  #############################################################################
-  # TODO: Implement the forward pass for a single timestep of an LSTM.        #
-  # You may want to use the numerically stable sigmoid implementation above.  #
-  #############################################################################
-  pass
-  ##############################################################################
-  #                               END OF YOUR CODE                             #
-  ##############################################################################
+  
+  N, H = prev_h.shape
+  a = x.dot(Wx) + prev_h.dot(Wh) + b
+  
+  i = sigmoid(a[:,     : H])
+  f = sigmoid(a[:, H   : 2*H])
+  o = sigmoid(a[:, 2*H : 3*H])
+  g = np.tanh(a[:, 3*H : ])
+
+  next_c = f * prev_c + i * g
+  next_c_tanh = np.tanh(next_c) 
+  next_h = o * next_c_tanh
+
+  cache = (x, prev_h.copy(), prev_c.copy(), next_c_tanh, i, f, o, g, Wx, Wh)
   
   return next_h, next_c, cache
 
@@ -246,17 +252,26 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
   - dWh: Gradient of hidden-to-hidden weights, of shape (H, 4H)
   - db: Gradient of biases, of shape (4H,)
   """
-  dx, dh, dc, dWx, dWh, db = None, None, None, None, None, None
-  #############################################################################
-  # TODO: Implement the backward pass for a single timestep of an LSTM.       #
-  #                                                                           #
-  # HINT: For sigmoid and tanh you can compute local derivatives in terms of  #
-  # the output value from the nonlinearity.                                   #
-  #############################################################################
-  pass
-  ##############################################################################
-  #                               END OF YOUR CODE                             #
-  ##############################################################################
+
+  x, prev_h, prev_c, next_c_tanh, i, f, o, g, Wx, Wh = cache
+
+  dc = dnext_h * o * (1 - next_c_tanh ** 2)   # gradient from hidden
+  dprev_c = (dc + dnext_c) * f                # use both grad sources
+
+  #    sigmoid / tanh   inner derivative   outer gradient
+  di =  i * (1. - i)  * g                * (dc + dnext_c)
+  df =  f * (1. - f)  * prev_c           * (dc + dnext_c)
+  do =  o * (1. - o)  * next_c_tanh      * dnext_h
+  dg =  (1 - g ** 2)  * i                * (dc + dnext_c)
+
+  # stack them back
+  da = np.hstack((di, df, do, dg))
+
+  db = da.sum(axis=0)
+  dWx = x.T.dot(da)
+  dWh = prev_h.T.dot(da)
+  dprev_h = da.dot(Wh.T)
+  dx = da.dot(Wx.T)
 
   return dx, dprev_h, dprev_c, dWx, dWh, db
 
@@ -283,15 +298,25 @@ def lstm_forward(x, h0, Wx, Wh, b):
   - h: Hidden states for all timesteps of all sequences, of shape (N, T, H)
   - cache: Values needed for the backward pass.
   """
-  h, cache = None, None
-  #############################################################################
-  # TODO: Implement the forward pass for an LSTM over an entire timeseries.   #
-  # You should use the lstm_step_forward function that you just defined.      #
-  #############################################################################
-  pass
-  ##############################################################################
-  #                               END OF YOUR CODE                             #
-  ##############################################################################
+
+  N, T, D = x.shape
+  H = len(b) / 4
+
+  h = np.zeros((N, T, H))
+  c = np.zeros((N, T, H))
+
+  h[:, -1, :] = h0
+  cache = []
+
+  for t in xrange(T):
+    h[:, t, :], c[:, t, :], cch = lstm_step_forward(x[:, t, :], 
+                                                    h[:, t-1, :], 
+                                                    c[:, t-1, :], 
+                                                    Wx, Wh, b
+                                                   )
+    cache.append(cch)
+
+  cache.append((N, T, D, H)) # explicitly store shapes
 
   return h, cache
 
@@ -311,15 +336,31 @@ def lstm_backward(dh, cache):
   - dWh: Gradient of hidden-to-hidden weight matrix of shape (H, 4H)
   - db: Gradient of biases, of shape (4H,)
   """
-  dx, dh0, dWx, dWh, db = None, None, None, None, None
-  #############################################################################
-  # TODO: Implement the backward pass for an LSTM over an entire timeseries.  #
-  # You should use the lstm_step_backward function that you just defined.     #
-  #############################################################################
-  pass
-  ##############################################################################
-  #                               END OF YOUR CODE                             #
-  ##############################################################################
+
+  N, T, D, H = cache.pop() # explicitly stored shapes for easy zero-init
+  dh = dh.copy()           # we'll accumulate dh while backprop
+                           # without copy this breaks gradient check
+  dc = np.zeros_like(dh)
+  
+  dx = np.zeros((N, T, D))
+  dh0 = np.zeros((N, H))
+  dWx = np.zeros((D, 4 * H))
+  dWh = np.zeros((H, 4 * H))
+  db = np.zeros(4 * H)
+
+  for t in reversed(range(T)):
+    c = cache.pop()
+    dxt, dht, dct, dWxt, dWht, dbt = lstm_step_backward(dh[:, t, :], dc[:, t, :], c)
+
+    dh[:, t - 1, :] += dht
+    dc[:, t - 1, :] += dct
+
+    db += dbt
+    dWx += dWxt
+    dWh += dWht
+    dx[:, t, :] = dxt
+
+  dh0 = dht # very last dht
   
   return dx, dh0, dWx, dWh, db
 

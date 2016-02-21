@@ -114,32 +114,28 @@ class CaptioningRNN(object):
     W_vocab, b_vocab = self.params['W_vocab'], self.params['b_vocab']
     
     loss, grads = 0.0, {}
-    ############################################################################
-    # TODO: Implement the forward and backward passes for the CaptioningRNN.   #
-    # In the forward pass you will need to do the following:                   #
-    # (1) Use an affine transformation to compute the initial hidden state     #
-    #     from the image features. This should produce an array of shape (N, H)#
-    # (2) Use a word embedding layer to transform the words in captions_in     #
-    #     from indices to vectors, giving an array of shape (N, T, W).         #
-    # (3) Use either a vanilla RNN or LSTM (depending on self.cell_type) to    #
-    #     process the sequence of input word vectors and produce hidden state  #
-    #     vectors for all timesteps, producing an array of shape (N, T, H).    #
-    # (4) Use a (temporal) affine transformation to compute scores over the    #
-    #     vocabulary at every timestep using the hidden states, giving an      #
-    #     array of shape (N, T, V).                                            #
-    # (5) Use (temporal) softmax to compute loss using captions_out, ignoring  #
-    #     the points where the output word is <NULL> using the mask above.     #
-    #                                                                          #
-    # In the backward pass you will need to compute the gradient of the loss   #
-    # with respect to all model parameters. Use the loss and grads variables   #
-    # defined above to store loss and gradients; grads[k] should give the      #
-    # gradients for self.params[k].                                            #
-    ############################################################################
-    pass
-    ############################################################################
-    #                             END OF YOUR CODE                             #
-    ############################################################################
     
+
+    h0 = features.dot(W_proj) + b_proj
+    x, cache_x = word_embedding_forward(captions_in, W_embed)
+    if self.cell_type == 'rnn':
+        h, cache_h = rnn_forward(x, h0, Wx, Wh, b)
+    else:
+        h, cache_h = lstm_forward(x, h0, Wx, Wh, b)
+    s, cache_s = temporal_affine_forward(h, W_vocab, b_vocab)
+    
+    loss, g = temporal_softmax_loss(s, captions_out, mask)
+
+    g, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(g, cache_s)
+    if self.cell_type == 'rnn':
+        g, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(g, cache_h)
+    else:
+        g, dh0, grads['Wx'], grads['Wh'], grads['b'] = lstm_backward(g, cache_h)
+    grads['W_embed'] = word_embedding_backward(g, cache_x)
+
+    grads['b_proj'] = dh0.sum(axis=0)
+    grads['W_proj'] = features.T.dot(dh0)
+
     return loss, grads
 
 
@@ -197,7 +193,24 @@ class CaptioningRNN(object):
     # functions; you'll need to call rnn_step_forward or lstm_step_forward in #
     # a loop.                                                                 #
     ###########################################################################
-    pass
+    
+    h = features.dot(W_proj) + b_proj
+    c = np.zeros_like(h)
+    x = self._start * np.ones(N, dtype=np.int32)
+
+    for t in xrange(max_length):
+        x, _ = word_embedding_forward(x, W_embed)
+        if self.cell_type == 'rnn':
+            h, _ = rnn_step_forward(x, h, Wx, Wh, b)
+        else:
+            h, c, _ = lstm_step_forward(x, h, c, Wx, Wh, b)
+
+        s = h.dot(W_vocab) + b_vocab
+        x = s.argmax(axis=1)
+
+        captions[:, t] = x
+
+
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
